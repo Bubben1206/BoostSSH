@@ -1070,14 +1070,13 @@ string decryptAES128key(tcp::socket& socket, string privkey)
 int main()
 {
     bool shiftPress = false;
-	string ipinput;
+	string ip;
 	cout << "IP Address: ";
-	cin >> ipinput;
-	char* ip = new char[ipinput.length()];
-	for (int k = 0; k < ipinput.length(); ++k)
-	{
-		ip[k] = ipinput[k];
-	}
+	cin >> ip;
+	cout << "Port: ";
+	string portnum;
+	cin >> portnum;
+
     std::string filePath = "publickey.txt";
     std::ifstream publickey(filePath);
     if (!publickey)
@@ -1108,7 +1107,7 @@ int main()
 
         tcp::resolver resolver(io_context);
         tcp::resolver::results_type endpoints =
-            resolver.resolve(ip, "13");
+            resolver.resolve(ip, portnum);
 
         tcp::socket socket(io_context);
         boost::asio::connect(socket, endpoints);
