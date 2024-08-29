@@ -63,13 +63,13 @@ class session
     : public std::enable_shared_from_this<session>
 {
 public:
-    session(tcp::socket socket)
-        : socket_(std::move(socket))
+    session(tcp::socket socket) : socket_(std::move(socket))
     {
+
     }
 
-
-
+    static std::vector<std::pair<boost::asio::basic_stream_socket<boost::asio::ip::tcp, boost::asio::any_io_executor>&, std::string>> socketid;
+    
     void start()
     {
         if (!auth(socket_, pubkey))
@@ -82,17 +82,74 @@ public:
         do_read();
     }
 
+    std::string exec(const char* cmd) {
+        std::array<char, 128> buffer;
+        std::string result;
+
+
+
+        auto pipe = _popen(cmd, "r");
+
+        if (!pipe) throw std::runtime_error("popen() failed!");
+
+        while (!feof(pipe))
+        {
+            if (fgets(buffer.data(), buffer.size(), pipe) != nullptr)
+                result += buffer.data();
+        }
+
+        auto rc = _pclose(pipe);
+
+        if (rc == EXIT_SUCCESS)
+        { // == 0
+            cout << rc << endl;
+        }
+        else if (rc == EXIT_FAILURE)
+        {
+            string tmp(cmd);
+            return "'" + tmp + "' is not recognized as an internal or external command, operable program or batch file.";
+        }
+        return result;
+    }
+
 private:
     
     char in = '\0';
 
     bool auth(tcp::socket& socket, string pubkey)
     {
+        string temp;
         //boost::asio::streambuf buffer;
+        for (int k = 0; k < 3; ++k)
+        {
+            boost::asio::read(socket, boost::asio::buffer(&in, 1));
+            temp.push_back(in);
+            buffer.consume(1);
+        }
 
-        bigint e = 1;
-        bigint n = 1;
-        decodepublickey(e, n, pubkey);
+        int len2 = stoi(temp);
+        temp = "";
+        for (int k = 0; k < len2; ++k)
+        {
+            boost::asio::read(socket, boost::asio::buffer(&in, 1));
+            temp.push_back(in);
+            buffer.consume(1);
+        }
+        clientpubkey = temp;
+        size_t found = pubkey.find(clientpubkey);
+        if (found == string::npos)
+            return false;
+        for (size_t k = found + temp.length(); k < pubkey.length(); ++k)
+        {
+            if (isdigit(pubkey[k]))
+                continue;
+            else if (isalpha(pubkey[k]))
+                username.push_back(pubkey[k]);
+            else
+                break;
+        }
+        cout << endl << endl << username << endl << endl << endl; // Don't ask what this is...
+        tmp = decodepublickey(e, n, clientpubkey);
         string randstring = randomString(256);
         bigint randauth(randstring);
         bigint encrypts = encryptRSA(randauth, e, n);
@@ -111,7 +168,11 @@ private:
             buffer.consume(1);
         }
         if (message == randstring)
+        {
+            
+            
             return true;
+        }
         return false;
 
     }
@@ -121,7 +182,7 @@ private:
         
         bigint e = 1;
         bigint n = 1;
-        decodepublickey(e, n, pubkey);
+        decodepublickey(e, n, clientpubkey);
         string success = "Auth success";
         cout << success << endl;
         boost::asio::write(socket_, boost::asio::buffer(success, success.length()));
@@ -135,6 +196,8 @@ private:
         string formatkey = length + encryptedkey;
         cout << formatkey << endl;
         boost::asio::write(socket_, boost::asio::buffer(formatkey, formatkey.length()));
+        combined = AESkey + username;
+        socketid.push_back(make_pair(ref(socket_), combined));
     }
 
     std::string make_daytime_string()
@@ -163,8 +226,57 @@ private:
             {
                 if (!ec)
                 {
+                    
                     //cout << data_ << endl;
-                    do_write(32);
+                    string hexdecrypted = aesdecrypt(AESkey, string2hex(data_, 32));
+                    string decrypted = hextostring(hexdecrypted);
+                    if(decrypted[0] == '/')
+                    {
+                        command = true;
+                        reverse(decrypted.begin(), decrypted.end());
+                        decrypted.pop_back();
+                        reverse(decrypted.begin(), decrypted.end());
+                        decrypted.push_back('\0');
+                        const char* temp5 = decrypted.c_str();
+                        decrypted = exec(temp5);
+                        encrypted = aesencrypt(decrypted, AESkey);
+                        do_write(encrypted.length(), socket_);
+                    }
+                    else if (decrypted[0] == '!')
+                    {
+                        reverse(decrypted.begin(), decrypted.end());
+                        decrypted.pop_back();
+                        reverse(decrypted.begin(), decrypted.end());
+                        decrypted.push_back('\0');
+                        for (int k = 0; k < decrypted.length(); ++k)
+                        {
+                            if (isalpha(decrypted[k]))
+                                enteredUsername.push_back(decrypted[k]);
+                            else
+                                break;
+                        }
+                        for (auto t : socketid)
+                        {
+                            readName = "";
+                            int length2 = t.second.length();
+                            for (int k = 16; k < t.second.length(); k++)
+                                readName.push_back(t.second[k]);
+                            if (readName == enteredUsername)
+                            {
+                                command = true;
+                                string customAESkey = t.second.substr(0, 16);
+                                string temp = decrypted.substr(enteredUsername.length() + 1, decrypted.length());
+                                encrypted = aesencrypt(temp, customAESkey);
+                                enteredUsername = "";
+                                do_write(encrypted.length(), ref(t.first));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        command = false;
+                        do_write(32, socket_);
+                    }
                 }
             });
         
@@ -172,10 +284,15 @@ private:
         
     }
 
-    void do_write(std::size_t length)
+    void do_write(std::size_t length, tcp::socket& customsocket)
     {
+        char* data = new char[length];
+        for (int k = 0; k < length; ++k)
+        {
+            data[k] = command ? encrypted[k] : data_[k];
+        }
         auto self(shared_from_this());
-        boost::asio::async_write(socket_, boost::asio::buffer(data_, length), [this, self](boost::system::error_code ec, std::size_t /*length*/)
+        boost::asio::async_write(customsocket, boost::asio::buffer(data, length), [this, self](boost::system::error_code ec, std::size_t /*length*/)
             {
                 if (!ec)
                 {
@@ -199,11 +316,17 @@ private:
     bigint d = 1;
     bigint npriv = 1;
 
-    bool tmp = decodepublickey(e, n, pubkey);
+    string readName;
+    string combined;
+    bool tmp;
+    string clientpubkey;
     tcp::socket socket_;
+    string username;
+    string enteredUsername;
     //string data_;
     string encrypted;
-    enum { max_length = 1024 };
+    bool command;
+    enum { max_length = 2048 };
     char data_[max_length];
 
     
