@@ -2,7 +2,7 @@
 #include <string>
 #include <iostream>
 #include <boost/asio.hpp>
-#include <Windows.h>
+//#include <Windows.h>
 #include <thread>
 #include <fstream>
 #include <vector>
