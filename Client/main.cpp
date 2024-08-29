@@ -4,7 +4,7 @@
 #include <string>
 #include <iostream>
 #include <boost/asio.hpp>
-#include <Windows.h>
+//#include <Windows.h>
 #include <thread>
 #include <fstream>
 #include <vector>
@@ -172,9 +172,14 @@ void input(string& msg, tcp::socket& socket, string aeskey, string& message)
 	}
 }
 
-void auth(tcp::socket& socket, string privkey)
+void auth(tcp::socket& socket, string privkey, string pubkey)
 {
 	boost::asio::streambuf buffer;
+
+	boost::system::error_code ignored_error;
+	string length = to_string(pubkey.length());
+	string send = length + pubkey;
+	boost::asio::write(socket, boost::asio::buffer(send, send.length()), ignored_error);
 
 	bigint d;
 	bigint n;
@@ -199,7 +204,7 @@ void auth(tcp::socket& socket, string privkey)
 	bigint cipher(msg);
 	bigint decrypts = decryptRSA(cipher, d, n);
 	string decrypted = decrypts.to_string();
-	boost::system::error_code ignored_error;
+	//boost::system::error_code ignored_error;
 	boost::asio::write(socket, boost::asio::buffer(decrypted, decrypted.length()), ignored_error);
 	msg = "";
 	for (int k = 0; k < 12; k++)
@@ -257,7 +262,7 @@ int main()
 		tcp::socket socket(io_context);
 		boost::asio::connect(socket, endpoints);
 
-		auth(socket, privkey);
+		auth(socket, privkey, pubkey);
 
 		string aeskey = decryptAES128key(socket, privkey);
 		cout << "Received AES128 key: " << aeskey << endl;
