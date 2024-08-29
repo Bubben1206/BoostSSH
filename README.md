@@ -5,7 +5,7 @@ Peer-To-Peer communication via SSH protocol, encrypted using 4096-bit RSA-keypai
 
 Server and Client requires boost::asio to compile! Boost version 1.8.2 is recommended.
 
-Only works on Windows operating systems!!! (for now)
+Windows OS recommended, it might compile on Linux but I haven't tried it. Feel free to try it on Linux!
 
 
 ## How to use:
