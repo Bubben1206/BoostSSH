@@ -1,5 +1,5 @@
 # BoostSSH
-Peer-To-Peer communication via SSH protocol, encrypted using 4096-bit RSA-keypair and AES128.
+Peer-To-Peer communication, encrypted using 4096-bit RSA-keypair and AES128.
 
 ## Requirements
 
